@@ -6,18 +6,30 @@ if [ -z "${ZSH_VERSION:-}" ]; then
   return 1 2>/dev/null || exit 1
 fi
 
-typeset -ga WT_DOTFILES_TO_COPY=(
-  .env
-  .env.local
-  .envrc
+typeset -ga WT_SAFE_DOTFILES_TO_COPY=(
   .mise.toml
   .node-version
-  .npmrc
   .nvmrc
   .python-version
   .ruby-version
   .tool-versions
 )
+
+typeset -ga WT_SENSITIVE_DOTFILES_TO_COPY=(
+  .env
+  .env.local
+  .envrc
+  .npmrc
+)
+
+if (( ! ${+WT_DOTFILES_TO_COPY} )); then
+  typeset -ga WT_DOTFILES_TO_COPY=("${WT_SAFE_DOTFILES_TO_COPY[@]}")
+  case "${WT_COPY_SENSITIVE_DOTFILES:-0}" in
+    1|true|TRUE|yes|YES|on|ON)
+      WT_DOTFILES_TO_COPY+=("${WT_SENSITIVE_DOTFILES_TO_COPY[@]}")
+      ;;
+  esac
+fi
 
 _wt_copy_dotfiles() {
   emulate -L zsh
@@ -115,11 +127,15 @@ _wt_switch_or_create() {
     fi
   done
 
-  local safe_branch="${requested_branch//\//-}"
   local wt_base_dir="${repo_root:h}/${repo_name}-worktrees"
-  local new_path="${wt_base_dir}/${safe_branch}"
+  local new_path="${wt_base_dir}/${requested_branch}"
 
-  mkdir -p "$wt_base_dir" || return 1
+  if ! git check-ref-format --branch "$requested_branch" >/dev/null 2>&1; then
+    print -u2 "wt: invalid branch name: $requested_branch"
+    return 1
+  fi
+
+  mkdir -p "${new_path:h}" || return 1
   if [[ -e "$new_path" ]]; then
     print -u2 "wt: target path already exists: $new_path"
     return 1
@@ -138,13 +154,40 @@ _wt_switch_or_create() {
 _wt_choice_to_path() {
   emulate -L zsh
   local choice="$1"
+  local base_dir="$2"
+  local candidate
 
   if [[ "$choice" != *$'\t'* ]]; then
     print -u2 "wt: invalid worktree selection format"
     return 1
   fi
 
-  print -r -- "${choice#*$'\t'}"
+  candidate="${choice##*$'\t'}"
+  if [[ "$candidate" == "~/"* ]]; then
+    candidate="${HOME}/${candidate#~/}"
+  elif [[ "$candidate" != /* ]]; then
+    candidate="${base_dir}/${candidate}"
+  fi
+
+  print -r -- "${candidate:A}"
+}
+
+_wt_display_path() {
+  emulate -L zsh
+  local abs_path="$1"
+  local base_dir="$2"
+
+  if [[ "$abs_path" == "$base_dir"/* ]]; then
+    print -r -- "${abs_path#$base_dir/}"
+    return 0
+  fi
+
+  if [[ "$abs_path" == "$HOME"/* ]]; then
+    print -r -- "~/${abs_path#$HOME/}"
+    return 0
+  fi
+
+  print -r -- "$abs_path"
 }
 
 wt() {
@@ -178,9 +221,19 @@ wt() {
   fi
 
   local -a choices
-  local i
+  local i max_branch_width=0 display_base display_path branch_label
+  display_base="${main_root:h}"
+
+  for ((i = 1; i <= ${#WT_BRANCHES[@]}; i++)); do
+    if (( ${#WT_BRANCHES[i]} > max_branch_width )); then
+      max_branch_width=${#WT_BRANCHES[i]}
+    fi
+  done
+
   for ((i = 1; i <= ${#WT_PATHS[@]}; i++)); do
-    choices+=("${WT_BRANCHES[i]}"$'\t'"${WT_PATHS[i]}")
+    display_path="$(_wt_display_path "${WT_PATHS[i]}" "$display_base")"
+    branch_label="$(printf "%-${max_branch_width}s" "${WT_BRANCHES[i]}")"
+    choices+=("${branch_label}"$'\t'"${display_path}"$'\t'"${WT_PATHS[i]}")
   done
 
   local result key selection selected_path
@@ -218,7 +271,7 @@ wt() {
         return 0
       fi
 
-      selected_path="$(_wt_choice_to_path "$selection")" || return 1
+      selected_path="$(_wt_choice_to_path "$selection" "$display_base")" || return 1
 
       if [[ "$selected_path" == "$main_root" ]]; then
         print -u2 "wt: cannot delete main worktree"
@@ -237,7 +290,7 @@ wt() {
       if [[ -z "$selection" ]]; then
         return 0
       fi
-      selected_path="$(_wt_choice_to_path "$selection")" || return 1
+      selected_path="$(_wt_choice_to_path "$selection" "$display_base")" || return 1
       builtin cd "$selected_path" || return 1
       ;;
   esac
