@@ -1,5 +1,7 @@
 # wt
 
+![wt screencap](./assets/screencap.png)
+
 Tiny zsh helper for switching to existing git worktrees or creating a new one from a branch name.
 
 ## Requirements
