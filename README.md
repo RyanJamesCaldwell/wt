@@ -10,7 +10,41 @@ Tiny zsh helper for switching to existing git worktrees or creating a new one fr
 
 ## Install
 
-Source `wt.zsh` (or `wt.plugin.zsh`) from your shell config:
+Pick one of these installation paths.
+
+### 1) Clone the repo (recommended)
+
+```zsh
+git clone https://github.com/RyanJamesCaldwell/wt.git ~/.config/wt
+echo 'source ~/.config/wt/wt.zsh' >> ~/.zshrc
+source ~/.zshrc
+```
+
+### 2) Use a zsh plugin manager
+
+`wt.plugin.zsh` exists for plugin-manager compatibility and sources `wt.zsh`.
+
+```zsh
+# zinit
+zinit light RyanJamesCaldwell/wt
+
+# antigen
+antigen bundle RyanJamesCaldwell/wt
+
+# zplug
+zplug "RyanJamesCaldwell/wt"
+```
+
+### 3) Download a single file
+
+```zsh
+mkdir -p ~/.config/wt
+curl -fsSL https://raw.githubusercontent.com/RyanJamesCaldwell/wt/main/wt.zsh -o ~/.config/wt/wt.zsh
+echo 'source ~/.config/wt/wt.zsh' >> ~/.zshrc
+source ~/.zshrc
+```
+
+Manual source example:
 
 ```zsh
 # ~/.zshrc
@@ -20,14 +54,6 @@ source /absolute/path/to/wt.plugin.zsh
 ```
 
 Do not run `./wt.zsh` directly; it defines a shell function and must be sourced.
-
-`wt.plugin.zsh` exists for zsh plugin-manager compatibility and simply sources `wt.zsh`.
-
-Reload your shell:
-
-```zsh
-source ~/.zshrc
-```
 
 ## Usage
 
@@ -75,4 +101,3 @@ source /absolute/path/to/wt.zsh
 ## Tested Platforms
 
 - macOS with zsh 5.9
-
