@@ -3,7 +3,7 @@
 
 if [ -z "${ZSH_VERSION:-}" ]; then
   echo "wt.zsh requires zsh. Source it from zsh: source /path/to/wt.zsh" >&2
-  exit 1
+  return 1 2>/dev/null || exit 1
 fi
 
 typeset -ga WT_DOTFILES_TO_COPY=(
@@ -76,6 +76,29 @@ _wt_collect_worktrees() {
   done < <(git worktree list --porcelain; printf '\n')
 }
 
+_wt_primary_worktree_root() {
+  emulate -L zsh
+  setopt pipefail
+
+  local current_root="$1"
+  local common_dir abs_common_dir
+
+  common_dir="$(git rev-parse --git-common-dir 2>/dev/null)" || return 1
+  if [[ "$common_dir" == /* ]]; then
+    abs_common_dir="$common_dir"
+  else
+    abs_common_dir="${current_root}/${common_dir}"
+  fi
+  abs_common_dir="${abs_common_dir:A}"
+
+  if [[ "${abs_common_dir:t}" != ".git" ]]; then
+    print -u2 "wt: unable to resolve primary worktree root"
+    return 1
+  fi
+
+  print -r -- "${abs_common_dir:h}"
+}
+
 _wt_switch_or_create() {
   emulate -L zsh
   setopt pipefail
@@ -133,24 +156,25 @@ wt() {
     return 1
   fi
 
-  if ! command -v fzf >/dev/null 2>&1; then
-    print -u2 "wt: missing dependency: fzf"
-    return 1
-  fi
-
-  local repo_root repo_name
+  local repo_root main_root repo_name
   repo_root="$(git rev-parse --show-toplevel 2>/dev/null)" || {
     print -u2 "wt: not inside a git repository"
     return 1
   }
-  repo_name="${repo_root:t}"
+  main_root="$(_wt_primary_worktree_root "$repo_root")" || return 1
+  repo_name="${main_root:t}"
 
   _wt_collect_worktrees
 
   local requested_branch="${1:-}"
   if [[ -n "$requested_branch" ]]; then
-    _wt_switch_or_create "$requested_branch" "$repo_root" "$repo_name"
+    _wt_switch_or_create "$requested_branch" "$main_root" "$repo_name"
     return $?
+  fi
+
+  if ! command -v fzf >/dev/null 2>&1; then
+    print -u2 "wt: missing dependency: fzf"
+    return 1
   fi
 
   local -a choices
@@ -186,7 +210,7 @@ wt() {
       if [[ -z "$branch" ]]; then
         return 0
       fi
-      _wt_switch_or_create "$branch" "$repo_root" "$repo_name"
+      _wt_switch_or_create "$branch" "$main_root" "$repo_name"
       return $?
       ;;
     ctrl-d)
@@ -196,7 +220,7 @@ wt() {
 
       selected_path="$(_wt_choice_to_path "$selection")" || return 1
 
-      if [[ "$selected_path" == "$repo_root" ]]; then
+      if [[ "$selected_path" == "$main_root" ]]; then
         print -u2 "wt: cannot delete main worktree"
         return 1
       fi
