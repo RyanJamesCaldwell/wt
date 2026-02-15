@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Syntax check
+        run: zsh -n wt.zsh wt.plugin.zsh
+
+      - name: Smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          tmpdir="$(mktemp -d)"
+          repo="$tmpdir/repo"
+          mkdir -p "$repo"
+          cd "$repo"
+
+          git init -q
+          git config user.name "CI"
+          git config user.email "ci@example.com"
+          echo init > README.md
+          git add README.md
+          git commit -q -m init
+
+          # Untracked files in the main worktree; wt should copy only safe files by default.
+          echo safe > .nvmrc
+          echo secret > .env
+
+          zsh -c "source '$GITHUB_WORKSPACE/wt.zsh'; wt feature/test >/dev/null; \
+            test \"\$(git branch --show-current)\" = feature/test; \
+            test -f .nvmrc; \
+            test ! -f .env"
