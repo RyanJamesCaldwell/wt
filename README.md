@@ -86,12 +86,13 @@ Sensitive files are not copied by default:
 - `.envrc`
 - `.npmrc`
 
-Enable sensitive-file copying before sourcing `wt.zsh`:
+Enable sensitive-file copying:
 
 ```zsh
 WT_COPY_SENSITIVE_DOTFILES=1
-source /absolute/path/to/wt.zsh
 ```
+
+You can set that flag either before sourcing `wt.zsh` or later in an existing shell session, as long as it is set before running `wt <branch-name>`.
 
 Or fully override the copy list:
 
