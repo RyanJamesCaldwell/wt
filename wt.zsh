@@ -22,24 +22,36 @@ typeset -ga WT_SENSITIVE_DOTFILES_TO_COPY=(
   .npmrc
 )
 
-if (( ! ${+WT_DOTFILES_TO_COPY} )); then
-  typeset -ga WT_DOTFILES_TO_COPY=("${WT_SAFE_DOTFILES_TO_COPY[@]}")
+_wt_should_copy_sensitive_dotfiles() {
+  emulate -L zsh
+
   case "${WT_COPY_SENSITIVE_DOTFILES:-0}" in
     1|true|TRUE|yes|YES|on|ON)
-      WT_DOTFILES_TO_COPY+=("${WT_SENSITIVE_DOTFILES_TO_COPY[@]}")
+      return 0
       ;;
   esac
-fi
+
+  return 1
+}
 
 _wt_copy_dotfiles() {
   emulate -L zsh
   setopt pipefail
 
-  local src_root="$1"
-  local dest_root="$2"
+  local src_root="$1" dest_root="$2"
+  local -a dotfiles_to_copy
   local file src_file dest_file
 
-  for file in "${WT_DOTFILES_TO_COPY[@]}"; do
+  if (( ${+WT_DOTFILES_TO_COPY} )); then
+    dotfiles_to_copy=("${WT_DOTFILES_TO_COPY[@]}")
+  else
+    dotfiles_to_copy=("${WT_SAFE_DOTFILES_TO_COPY[@]}")
+    if _wt_should_copy_sensitive_dotfiles; then
+      dotfiles_to_copy+=("${WT_SENSITIVE_DOTFILES_TO_COPY[@]}")
+    fi
+  fi
+
+  for file in "${dotfiles_to_copy[@]}"; do
     src_file="$src_root/$file"
     dest_file="$dest_root/$file"
     if [[ -f "$src_file" && ! -e "$dest_file" ]]; then
