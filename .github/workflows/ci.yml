@@ -42,3 +42,24 @@ jobs:
             test \"\$(git branch --show-current)\" = feature/test; \
             test -f .nvmrc; \
             test ! -f .env"
+
+          test "$(WT_BRANCH_PREFIX='custom/' zsh -c "source '$GITHUB_WORKSPACE/wt.zsh'; _wt_branch_prefix")" = 'custom/'
+          test "$(WT_BRANCH_PREFIX='' zsh -c "source '$GITHUB_WORKSPACE/wt.zsh'; _wt_branch_prefix")" = ''
+          test "$(WT_BRANCH_PREFIX='custom/' zsh -c "
+            source '$GITHUB_WORKSPACE/wt.zsh'
+            fzf() {
+              [[ \"\$*\" == *'--query=custom/'* ]] || return 1
+              print -r -- 'custom/new-feature'
+              return 1
+            }
+            _wt_prompt_for_branch
+          ")" = 'custom/new-feature'
+
+          git config wt.branchPrefix 'team/'
+          test "$(zsh -c "source '$GITHUB_WORKSPACE/wt.zsh'; _wt_branch_prefix")" = 'team/'
+          git config --unset wt.branchPrefix
+
+          mkdir -p "$tmpdir/bin"
+          printf '%s\n' '#!/bin/sh' 'echo RyanJamesCaldwell' > "$tmpdir/bin/gh"
+          chmod +x "$tmpdir/bin/gh"
+          test "$(PATH="$tmpdir/bin:$PATH" zsh -c "source '$GITHUB_WORKSPACE/wt.zsh'; _wt_branch_prefix")" = 'ryanjamescaldwell/'

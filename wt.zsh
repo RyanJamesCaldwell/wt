@@ -34,6 +34,62 @@ _wt_should_copy_sensitive_dotfiles() {
   return 1
 }
 
+_wt_branch_prefix() {
+  emulate -L zsh
+
+  local configured_prefix login
+
+  if (( ${+WT_BRANCH_PREFIX} )); then
+    print -rn -- "$WT_BRANCH_PREFIX"
+    return 0
+  fi
+
+  if configured_prefix="$(git config --get wt.branchPrefix 2>/dev/null)"; then
+    print -rn -- "$configured_prefix"
+    return 0
+  fi
+
+  if ! command -v gh >/dev/null 2>&1; then
+    return 0
+  fi
+
+  login="$(
+    gh auth status --active --json hosts \
+      --jq '[.hosts | to_entries[] | .value[] | select(.active == true) | .login][0] // empty' \
+      2>/dev/null
+  )" || return 0
+
+  if [[ -n "$login" ]]; then
+    print -rn -- "${login:l}/"
+  fi
+}
+
+_wt_prompt_for_branch() {
+  emulate -L zsh
+  setopt pipefail
+
+  local prefix result
+  prefix="$(_wt_branch_prefix)"
+
+  result="$(
+    printf '\n' | fzf \
+      --print-query \
+      --query="$prefix" \
+      --prompt='branch> ' \
+      --header='[Enter: create] [Esc: cancel]' \
+      --no-info \
+      --height=20% \
+      --layout=reverse \
+      --border
+  )"
+
+  if [[ -z "$result" ]]; then
+    return 1
+  fi
+
+  print -r -- "${result%%$'\n'*}"
+}
+
 _wt_copy_dotfiles() {
   emulate -L zsh
   setopt pipefail
@@ -270,8 +326,8 @@ wt() {
 
   case "$key" in
     ctrl-n)
-      local branch=""
-      read "branch?Branch name: "
+      local branch
+      branch="$(_wt_prompt_for_branch)" || return 0
       if [[ -z "$branch" ]]; then
         return 0
       fi

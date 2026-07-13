@@ -61,12 +61,34 @@ Do not run `./wt.zsh` directly; it defines a shell function and must be sourced.
 
 - `wt`
   - Opens an `fzf` picker of existing worktrees and `cd`s to the selection.
-  - `Ctrl-N`: prompt for branch name, create/switch worktree.
+  - `Ctrl-N`: open an `fzf` branch-name prompt, prefilled with your configured prefix, then create/switch worktree.
   - `Ctrl-D`: remove selected worktree (with confirmation; main worktree is protected).
 - `wt <branch-name>`
   - If that branch already has a worktree, switches to it.
   - Otherwise creates a new worktree at `../<repo>-worktrees/<branch-name>` and switches to it.
   - Branch names with `/` are preserved as nested directories (for example `team/feature` -> `../<repo>-worktrees/team/feature`).
+
+## Branch Prefix
+
+The `Ctrl-N` branch prompt uses the first available prefix from:
+
+1. `WT_BRANCH_PREFIX`, including an explicitly empty value.
+2. The repository or global Git setting `wt.branchPrefix`.
+3. The active GitHub CLI login from `gh auth status`, lowercased and followed by `/`.
+
+Set a persistent prefix with Git:
+
+```zsh
+git config --global wt.branchPrefix 'ryanjamescaldwell/'
+```
+
+Or configure it in your shell:
+
+```zsh
+export WT_BRANCH_PREFIX='ryanjamescaldwell/'
+```
+
+Set `WT_BRANCH_PREFIX=''` to disable both the Git setting and the automatic GitHub CLI default.
 
 ## Dotfile Copy Behavior
 
