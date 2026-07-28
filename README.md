@@ -61,7 +61,7 @@ Do not run `./wt.zsh` directly; it defines a shell function and must be sourced.
 
 - `wt`
   - Opens an `fzf` picker of existing worktrees and `cd`s to the selection.
-  - Each row shows `branch`, `created`, `updated`, and `path`, where `created` and `updated` are compact relative ages (for example `5m`, `3h`, `2d`, `4w`, `6mo`, `1y`).
+  - Rows are shown under a `branch` / `created` / `updated` / `path` column header, where `created` and `updated` are compact relative ages (for example `5m`, `3h`, `2d`, `4w`, `6mo`, `1y`).
   - `Ctrl-N`: open an `fzf` branch-name prompt, prefilled with your configured prefix, then create/switch worktree.
   - `Ctrl-D`: remove selected worktree (with confirmation; main worktree is protected).
 - `wt <branch-name>`
