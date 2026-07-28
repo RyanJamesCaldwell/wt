@@ -179,6 +179,128 @@ _wt_primary_worktree_root() {
   print -r -- "${abs_common_dir:h}"
 }
 
+# Extracts the unix timestamp from a single reflog line into REPLY.
+# Reflog lines look like: <old> <new> <name> <email> <timestamp> <tz>\t<message>
+_wt_reflog_line_timestamp() {
+  emulate -L zsh
+
+  local meta="${1%%$'\t'*}"
+
+  meta="${meta% *}"
+  REPLY="${meta##* }"
+
+  [[ "$REPLY" == <-> ]]
+}
+
+# Reads the first and last reflog entries for a branch into the `reply` array
+# as (created_timestamp updated_timestamp). Uses a single file read, no forks.
+_wt_reflog_bounds() {
+  emulate -L zsh
+
+  local logfile="$1"
+  local contents created
+  local -a lines
+
+  [[ -r "$logfile" ]] || return 1
+
+  contents="$(<"$logfile")" || return 1
+  lines=("${(@f)contents}")
+  while (( ${#lines} )) && [[ -z "${lines[-1]}" ]]; do
+    lines[-1]=()
+  done
+  (( ${#lines} )) || return 1
+
+  _wt_reflog_line_timestamp "${lines[1]}" || return 1
+  created="$REPLY"
+  _wt_reflog_line_timestamp "${lines[-1]}" || return 1
+
+  reply=("$created" "$REPLY")
+}
+
+# Renders a compact relative age (for example 5m, 3h, 2d, 4w, 6mo, 1y) into REPLY.
+_wt_relative_age() {
+  emulate -L zsh
+
+  local -i timestamp="$1" now="$2" delta
+
+  (( delta = now - timestamp ))
+  (( delta < 0 )) && delta=0
+
+  if (( delta < 60 )); then
+    REPLY='now'
+  elif (( delta < 3600 )); then
+    REPLY="$(( delta / 60 ))m"
+  elif (( delta < 86400 )); then
+    REPLY="$(( delta / 3600 ))h"
+  elif (( delta < 604800 )); then
+    REPLY="$(( delta / 86400 ))d"
+  elif (( delta < 2592000 )); then
+    REPLY="$(( delta / 604800 ))w"
+  elif (( delta < 31536000 )); then
+    REPLY="$(( delta / 2592000 ))mo"
+  else
+    REPLY="$(( delta / 31536000 ))y"
+  fi
+}
+
+# Fills WT_CREATED/WT_UPDATED with relative ages for each collected worktree.
+# $1 is the git common dir. Branch reflogs give both values without spawning a
+# process; only branches without a usable reflog fall back to a single batched
+# `git for-each-ref` call.
+_wt_collect_branch_times() {
+  emulate -L zsh
+  setopt pipefail
+
+  typeset -ga WT_CREATED=()
+  typeset -ga WT_UPDATED=()
+
+  zmodload -F zsh/datetime +p:EPOCHSECONDS 2>/dev/null
+
+  local git_common_dir="$1"
+  local -i now=${EPOCHSECONDS:-0}
+
+  if (( now <= 0 )); then
+    now="$(date +%s 2>/dev/null)"
+  fi
+
+  local logs_dir="${git_common_dir}/logs/refs/heads"
+  local -a missing_indexes
+  local -i i
+  local branch
+
+  for ((i = 1; i <= ${#WT_BRANCHES[@]}; i++)); do
+    WT_CREATED[i]='-'
+    WT_UPDATED[i]='-'
+
+    branch="${WT_BRANCHES[i]}"
+    [[ -z "$branch" || "$branch" == '(detached)' ]] && continue
+
+    if (( now > 0 )) && [[ -n "$git_common_dir" ]] && _wt_reflog_bounds "${logs_dir}/${branch}"; then
+      _wt_relative_age "${reply[1]}" "$now"
+      WT_CREATED[i]="$REPLY"
+      _wt_relative_age "${reply[2]}" "$now"
+      WT_UPDATED[i]="$REPLY"
+    else
+      missing_indexes+=("$i")
+    fi
+  done
+
+  (( ${#missing_indexes[@]} && now > 0 )) || return 0
+
+  local -A tip_times
+  local ref timestamp
+  while IFS=$'\t' read -r ref timestamp; do
+    [[ -n "$ref" && "$timestamp" == <-> ]] && tip_times[$ref]="$timestamp"
+  done < <(git for-each-ref --format='%(refname:short)%09%(committerdate:unix)' refs/heads 2>/dev/null)
+
+  for i in "${missing_indexes[@]}"; do
+    timestamp="${tip_times[${WT_BRANCHES[i]}]:-}"
+    [[ "$timestamp" == <-> ]] || continue
+    _wt_relative_age "$timestamp" "$now"
+    WT_UPDATED[i]="$REPLY"
+  done
+}
+
 _wt_switch_or_create() {
   emulate -L zsh
   setopt pipefail
@@ -289,29 +411,41 @@ wt() {
   fi
 
   local -a choices
-  local i max_branch_width=0 display_base display_path branch_label
+  local i max_branch_width=0 max_created_width=3 max_updated_width=3
+  local display_base display_path branch_label created_label updated_label
   display_base="${main_root:h}"
+
+  # _wt_primary_worktree_root guarantees the common dir is "<main_root>/.git".
+  _wt_collect_branch_times "${main_root}/.git"
 
   for ((i = 1; i <= ${#WT_BRANCHES[@]}; i++)); do
     if (( ${#WT_BRANCHES[i]} > max_branch_width )); then
       max_branch_width=${#WT_BRANCHES[i]}
     fi
+    if (( ${#WT_CREATED[i]} > max_created_width )); then
+      max_created_width=${#WT_CREATED[i]}
+    fi
+    if (( ${#WT_UPDATED[i]} > max_updated_width )); then
+      max_updated_width=${#WT_UPDATED[i]}
+    fi
   done
 
   for ((i = 1; i <= ${#WT_PATHS[@]}; i++)); do
     display_path="$(_wt_display_path "${WT_PATHS[i]}" "$display_base")"
-    branch_label="$(printf "%-${max_branch_width}s" "${WT_BRANCHES[i]}")"
-    choices+=("${branch_label}"$'\t'"${display_path}"$'\t'"${WT_PATHS[i]}")
+    branch_label="${(r:max_branch_width:)WT_BRANCHES[i]}"
+    created_label="${(r:max_created_width:)${WT_CREATED[i]:--}}"
+    updated_label="${(r:max_updated_width:)${WT_UPDATED[i]:--}}"
+    choices+=("${branch_label}"$'\t'"${created_label}"$'\t'"${updated_label}"$'\t'"${display_path}"$'\t'"${WT_PATHS[i]}")
   done
 
   local result key selection selected_path
   result="$(
     printf '%s\n' "${choices[@]}" | fzf \
-      --header='[Enter: switch] [Ctrl-N: new] [Ctrl-D: delete]' \
+      --header=$'[Enter: switch] [Ctrl-N: new] [Ctrl-D: delete]\nbranch \u00b7 created \u00b7 updated \u00b7 path' \
       --expect=ctrl-n,ctrl-d \
       --prompt='worktree> ' \
       --delimiter=$'\t' \
-      --with-nth=1,2 \
+      --with-nth=1,2,3,4 \
       --height=60% \
       --layout=reverse \
       --border

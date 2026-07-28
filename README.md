@@ -61,12 +61,19 @@ Do not run `./wt.zsh` directly; it defines a shell function and must be sourced.
 
 - `wt`
   - Opens an `fzf` picker of existing worktrees and `cd`s to the selection.
+  - Each row shows `branch`, `created`, `updated`, and `path`, where `created` and `updated` are compact relative ages (for example `5m`, `3h`, `2d`, `4w`, `6mo`, `1y`).
   - `Ctrl-N`: open an `fzf` branch-name prompt, prefilled with your configured prefix, then create/switch worktree.
   - `Ctrl-D`: remove selected worktree (with confirmation; main worktree is protected).
 - `wt <branch-name>`
   - If that branch already has a worktree, switches to it.
   - Otherwise creates a new worktree at `../<repo>-worktrees/<branch-name>` and switches to it.
   - Branch names with `/` are preserved as nested directories (for example `team/feature` -> `../<repo>-worktrees/team/feature`).
+
+## Branch Timestamps
+
+The picker's `created` and `updated` columns are read straight from each branch's reflog file under `.git/logs/refs/heads/`: the first entry is when the branch was created locally, the last entry is when the branch ref last moved (commit, merge, rebase, reset, pull). That is a single file read per worktree with no extra `git` processes.
+
+If a branch has no reflog (for example when `core.logAllRefUpdates` is disabled), `created` shows `-` and `updated` falls back to the tip commit date, resolved for all branches in one `git for-each-ref` call.
 
 ## Branch Prefix
 
