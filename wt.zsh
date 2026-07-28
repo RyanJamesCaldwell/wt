@@ -411,8 +411,9 @@ wt() {
   fi
 
   local -a choices
-  local i max_branch_width=0 max_created_width=3 max_updated_width=3
-  local display_base display_path branch_label created_label updated_label
+  local branch_header='branch' created_header='created' updated_header='updated' path_header='path'
+  local i max_branch_width=${#branch_header} max_created_width=${#created_header} max_updated_width=${#updated_header}
+  local display_base display_path branch_label created_label updated_label column_header
   display_base="${main_root:h}"
 
   # _wt_primary_worktree_root guarantees the common dir is "<main_root>/.git".
@@ -438,10 +439,13 @@ wt() {
     choices+=("${branch_label}"$'\t'"${created_label}"$'\t'"${updated_label}"$'\t'"${display_path}"$'\t'"${WT_PATHS[i]}")
   done
 
+  # Padded identically to the rows below so the labels line up with their columns.
+  column_header="${(r:max_branch_width:)branch_header}"$'\t'"${(r:max_created_width:)created_header}"$'\t'"${(r:max_updated_width:)updated_header}"$'\t'"${path_header}"
+
   local result key selection selected_path
   result="$(
     printf '%s\n' "${choices[@]}" | fzf \
-      --header=$'[Enter: switch] [Ctrl-N: new] [Ctrl-D: delete]\nbranch \u00b7 created \u00b7 updated \u00b7 path' \
+      --header=$'[Enter: switch] [Ctrl-N: new] [Ctrl-D: delete]\n'"$column_header" \
       --expect=ctrl-n,ctrl-d \
       --prompt='worktree> ' \
       --delimiter=$'\t' \
